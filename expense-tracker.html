@@ -1,0 +1,1132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Expense Tracker</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <!-- FontAwesome CDN -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+    <!-- Google Font: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Inter", "system-ui", "sans-serif"],
+            },
+            colors: {
+              brand: {
+                50: "#eef2ff",
+                100: "#e0e7ff",
+                200: "#c7d2fe",
+                300: "#a5b4fc",
+                400: "#818cf8",
+                500: "#6366f1",
+                600: "#4f46e5",
+                700: "#4338ca",
+                800: "#3730a3",
+                900: "#312e81",
+              },
+            },
+          },
+        },
+      };
+    </script>
+
+    <style>
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #c7d2fe;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #a5b4fc;
+      }
+
+      /* Smooth animations */
+      .transaction-item {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .transaction-item:hover {
+        transform: translateX(4px);
+      }
+      .transaction-item.removing {
+        opacity: 0;
+        transform: translateX(60px);
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        margin-top: 0;
+        margin-bottom: 0;
+        overflow: hidden;
+      }
+
+      /* Pulse animation for balance */
+      @keyframes balancePulse {
+        0% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.05);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+      .balance-pulse {
+        animation: balancePulse 0.4s ease-in-out;
+      }
+
+      /* Fade in animation */
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .fade-in-up {
+        animation: fadeInUp 0.35s ease-out;
+      }
+
+      /* Glass morphism effect */
+      .glass {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+      }
+
+      /* Background gradient */
+      .bg-gradient-mesh {
+        background: linear-gradient(
+          135deg,
+          #eef2ff 0%,
+          #e0e7ff 30%,
+          #f5f3ff 60%,
+          #ede9fe 100%
+        );
+        min-height: 100vh;
+      }
+
+      /* Delete button */
+      .delete-btn {
+        transition: all 0.2s ease;
+      }
+      .delete-btn:hover {
+        transform: scale(1.15) rotate(8deg);
+      }
+
+      /* Filter button active state */
+      .filter-btn.active {
+        background: #4f46e5;
+        color: white;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
+      }
+
+      /* Type toggle */
+      .type-toggle input:checked + label {
+        background: #4f46e5;
+        color: white;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+      }
+      .type-toggle input#typeIncome:checked + label {
+        background: #059669;
+        box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+      }
+      .type-toggle input#typeExpense:checked + label {
+        background: #dc2626;
+        box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+      }
+
+      /* Toast notification */
+      @keyframes toastIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px) scale(0.95);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      @keyframes toastOut {
+        from {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+        to {
+          opacity: 0;
+          transform: translateY(-20px) scale(0.95);
+        }
+      }
+      .toast-enter {
+        animation: toastIn 0.3s ease-out;
+      }
+      .toast-exit {
+        animation: toastOut 0.3s ease-in forwards;
+      }
+
+      /* Chart container */
+      .chart-container {
+        position: relative;
+        width: 100%;
+        max-width: 280px;
+        margin: 0 auto;
+      }
+    </style>
+  </head>
+
+  <body class="bg-gradient-mesh font-sans text-gray-800 antialiased">
+    <!-- Toast Container -->
+    <div
+      id="toastContainer"
+      class="fixed top-4 right-4 z-50 flex flex-col gap-2"
+    ></div>
+
+    <!-- Main App Container -->
+    <div class="min-h-screen py-6 px-4 sm:py-10">
+      <div class="max-w-2xl mx-auto space-y-6">
+        <!-- Header -->
+        <header class="text-center fade-in-up">
+          <div class="inline-flex items-center gap-3 mb-2">
+            <div
+              class="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center shadow-lg shadow-brand-200"
+            >
+              <i class="fa-solid fa-wallet text-white text-lg"></i>
+            </div>
+            <h1
+              class="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900"
+            >
+              Expense Tracker
+            </h1>
+          </div>
+          <p class="text-gray-500 text-sm font-medium">
+            Track your income &amp; expenses effortlessly
+          </p>
+          <!-- Storage Warning Banner (shown only if localStorage is blocked) -->
+          <div
+            id="storageWarning"
+            class="hidden mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-xs font-medium text-amber-700 text-center"
+          >
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+            Data will not persist after refresh (localStorage is blocked in this
+            environment).
+            <button
+              onclick="this.parentElement.classList.add('hidden')"
+              class="ml-2 text-amber-500 hover:text-amber-700 font-bold"
+            >
+              Dismiss
+            </button>
+          </div>
+        </header>
+
+        <!-- Balance Card -->
+        <section
+          class="glass rounded-2xl p-6 shadow-lg shadow-brand-100/50 border border-white/60 fade-in-up"
+          aria-label="Balance Summary"
+        >
+          <p
+            class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1"
+          >
+            Your Balance
+          </p>
+          <h2
+            id="balanceDisplay"
+            class="text-4xl sm:text-5xl font-extrabold text-gray-900 tracking-tight"
+          >
+            $0.00
+          </h2>
+          <div class="mt-5 grid grid-cols-2 gap-4">
+            <!-- Income -->
+            <div
+              class="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-center"
+            >
+              <p
+                class="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1"
+              >
+                <i class="fa-solid fa-arrow-trend-up mr-1"></i>Income
+              </p>
+              <p
+                id="incomeDisplay"
+                class="text-xl sm:text-2xl font-extrabold text-emerald-700"
+              >
+                $0.00
+              </p>
+            </div>
+            <!-- Expense -->
+            <div
+              class="bg-red-50 border border-red-100 rounded-xl p-4 text-center"
+            >
+              <p
+                class="text-xs font-bold text-red-600 uppercase tracking-wider mb-1"
+              >
+                <i class="fa-solid fa-arrow-trend-down mr-1"></i>Expense
+              </p>
+              <p
+                id="expenseDisplay"
+                class="text-xl sm:text-2xl font-extrabold text-red-700"
+              >
+                $0.00
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Chart Section -->
+        <section
+          id="chartSection"
+          class="glass rounded-2xl p-6 shadow-lg shadow-brand-100/50 border border-white/60 hidden fade-in-up"
+          aria-label="Spending Chart"
+        >
+          <h3
+            class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4"
+          >
+            <i class="fa-solid fa-chart-pie mr-1 text-brand-500"></i>Income vs
+            Expenses
+          </h3>
+          <div class="chart-container">
+            <canvas id="financeChart"></canvas>
+          </div>
+          <p
+            id="chartEmpty"
+            class="text-center text-gray-400 text-sm mt-2 hidden"
+          >
+            Add transactions to see the chart
+          </p>
+        </section>
+
+        <!-- Add Transaction Form -->
+        <section
+          class="glass rounded-2xl p-6 shadow-lg shadow-brand-100/50 border border-white/60 fade-in-up"
+          aria-label="Add Transaction"
+        >
+          <h3
+            class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4"
+          >
+            <i class="fa-solid fa-plus-circle mr-1 text-brand-500"></i>Add New
+            Transaction
+          </h3>
+          <form id="transactionForm" novalidate>
+            <!-- Type Toggle -->
+            <div class="mb-4">
+              <label
+                class="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider"
+                >Type</label
+              >
+              <div class="type-toggle grid grid-cols-2 gap-2">
+                <div>
+                  <input
+                    type="radio"
+                    name="transactionType"
+                    id="typeIncome"
+                    value="income"
+                    class="sr-only"
+                    checked
+                  />
+                  <label
+                    for="typeIncome"
+                    class="block text-center py-2.5 px-4 rounded-xl border-2 border-emerald-200 text-sm font-bold cursor-pointer transition-all duration-200 hover:border-emerald-400 text-emerald-700 bg-emerald-50"
+                  >
+                    <i class="fa-solid fa-arrow-up mr-1"></i>Income
+                  </label>
+                </div>
+                <div>
+                  <input
+                    type="radio"
+                    name="transactionType"
+                    id="typeExpense"
+                    value="expense"
+                    class="sr-only"
+                  />
+                  <label
+                    for="typeExpense"
+                    class="block text-center py-2.5 px-4 rounded-xl border-2 border-red-200 text-sm font-bold cursor-pointer transition-all duration-200 hover:border-red-400 text-red-700 bg-red-50"
+                  >
+                    <i class="fa-solid fa-arrow-down mr-1"></i>Expense
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div class="mb-4">
+              <label
+                for="text"
+                class="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider"
+                >Description</label
+              >
+              <input
+                type="text"
+                id="text"
+                placeholder="e.g., Salary, Rent, Groceries..."
+                class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition-all duration-200 text-sm font-medium placeholder:text-gray-400 bg-white"
+                autocomplete="off"
+              />
+              <p
+                id="textError"
+                class="text-red-500 text-xs mt-1 font-medium hidden"
+              >
+                <i class="fa-solid fa-circle-exclamation mr-1"></i>Please enter
+                a description
+              </p>
+            </div>
+
+            <!-- Amount -->
+            <div class="mb-5">
+              <label
+                for="amount"
+                class="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider"
+                >Amount ($)</label
+              >
+              <input
+                type="number"
+                id="amount"
+                placeholder="e.g., 1500"
+                min="0.01"
+                step="0.01"
+                class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition-all duration-200 text-sm font-medium placeholder:text-gray-400 bg-white"
+                autocomplete="off"
+              />
+              <p
+                id="amountError"
+                class="text-red-500 text-xs mt-1 font-medium hidden"
+              >
+                <i class="fa-solid fa-circle-exclamation mr-1"></i>Please enter
+                a valid positive amount
+              </p>
+            </div>
+
+            <!-- Submit Button -->
+            <button
+              type="submit"
+              class="w-full py-3.5 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold rounded-xl shadow-lg shadow-brand-200 hover:shadow-xl hover:shadow-brand-300 transition-all duration-200 text-sm tracking-wide focus:outline-none focus:ring-4 focus:ring-brand-200"
+            >
+              <i class="fa-solid fa-plus mr-2"></i>Add Transaction
+            </button>
+          </form>
+        </section>
+
+        <!-- Transaction History -->
+        <section
+          class="glass rounded-2xl p-6 shadow-lg shadow-brand-100/50 border border-white/60 fade-in-up"
+          aria-label="Transaction History"
+        >
+          <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h3
+              class="text-sm font-bold text-gray-500 uppercase tracking-wider"
+            >
+              <i class="fa-solid fa-clock-rotate-left mr-1 text-brand-500"></i
+              >History
+            </h3>
+            <span
+              id="transactionCount"
+              class="text-xs font-semibold text-gray-400 bg-gray-100 px-3 py-1 rounded-full"
+              >0 transactions</span
+            >
+          </div>
+
+          <!-- Filter Buttons -->
+          <div
+            class="flex gap-2 mb-4"
+            role="group"
+            aria-label="Filter Transactions"
+          >
+            <button
+              class="filter-btn active text-xs font-bold px-4 py-2 rounded-lg border border-gray-200 transition-all duration-200 hover:shadow-sm"
+              data-filter="all"
+            >
+              All
+            </button>
+            <button
+              class="filter-btn text-xs font-bold px-4 py-2 rounded-lg border border-gray-200 text-gray-600 bg-white transition-all duration-200 hover:shadow-sm"
+              data-filter="income"
+            >
+              <i class="fa-solid fa-arrow-up text-emerald-500 mr-1"></i>Income
+            </button>
+            <button
+              class="filter-btn text-xs font-bold px-4 py-2 rounded-lg border border-gray-200 text-gray-600 bg-white transition-all duration-200 hover:shadow-sm"
+              data-filter="expense"
+            >
+              <i class="fa-solid fa-arrow-down text-red-500 mr-1"></i>Expense
+            </button>
+          </div>
+
+          <!-- Transaction List -->
+          <ul
+            id="transactionList"
+            class="space-y-2 max-h-96 overflow-y-auto pr-1"
+          >
+            <!-- Transactions will be injected here -->
+          </ul>
+
+          <!-- Empty State -->
+          <div id="emptyState" class="text-center py-10">
+            <div
+              class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3"
+            >
+              <i class="fa-solid fa-receipt text-gray-300 text-2xl"></i>
+            </div>
+            <p class="text-gray-400 font-semibold text-sm">
+              No transactions yet
+            </p>
+            <p class="text-gray-300 text-xs mt-1">
+              Add your first transaction above
+            </p>
+          </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="text-center py-4">
+          <p class="text-xs text-gray-400 font-medium">
+            Built with <i class="fa-solid fa-heart text-red-400"></i> using
+            Vanilla JS, Tailwind CSS &amp; Chart.js
+          </p>
+        </footer>
+      </div>
+    </div>
+
+    <!-- ==================== JAVASCRIPT ==================== -->
+    <script>
+      // =============================================
+      // STATE & CONSTANTS
+      // =============================================
+      const STORAGE_KEY = "expenseTracker_transactions";
+      let transactions = [];
+      let currentFilter = "all";
+      let financeChart = null;
+
+      // In-memory fallback when localStorage is unavailable
+      let memoryStore = [];
+
+      /**
+       * Check if localStorage is available and writable.
+       * This handles sandboxed iframes, private browsing, and quota issues.
+       */
+      function isLocalStorageAvailable() {
+        try {
+          const testKey = "__expense_tracker_test__";
+          localStorage.setItem(testKey, "test");
+          localStorage.removeItem(testKey);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      const storageAvailable = isLocalStorageAvailable();
+
+      // =============================================
+      // DOM REFERENCES
+      // =============================================
+      const balanceDisplay = document.getElementById("balanceDisplay");
+      const incomeDisplay = document.getElementById("incomeDisplay");
+      const expenseDisplay = document.getElementById("expenseDisplay");
+      const transactionForm = document.getElementById("transactionForm");
+      const textInput = document.getElementById("text");
+      const amountInput = document.getElementById("amount");
+      const textError = document.getElementById("textError");
+      const amountError = document.getElementById("amountError");
+      const transactionList = document.getElementById("transactionList");
+      const emptyState = document.getElementById("emptyState");
+      const transactionCount = document.getElementById("transactionCount");
+      const chartSection = document.getElementById("chartSection");
+      const chartEmpty = document.getElementById("chartEmpty");
+      const filterBtns = document.querySelectorAll(".filter-btn");
+
+      // =============================================
+      // LOCAL STORAGE
+      // =============================================
+
+      /**
+       * Load transactions from localStorage (or memory fallback).
+       * Returns an array of transaction objects or empty array if none exist.
+       */
+      function loadTransactions() {
+        if (storageAvailable) {
+          try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            return stored ? JSON.parse(stored) : [];
+          } catch (error) {
+            console.warn(
+              "Error loading from localStorage, using memory fallback:",
+              error,
+            );
+            return memoryStore;
+          }
+        }
+        return memoryStore;
+      }
+
+      /**
+       * Save the current transactions array to localStorage (or memory fallback).
+       */
+      function saveTransactions() {
+        if (storageAvailable) {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+          } catch (error) {
+            console.warn(
+              "Error saving to localStorage, using memory fallback:",
+              error,
+            );
+            memoryStore = [...transactions];
+          }
+        } else {
+          memoryStore = [...transactions];
+        }
+      }
+
+      // =============================================
+      // TRANSACTION CRUD OPERATIONS
+      // =============================================
+
+      /**
+       * Generate a unique ID for each transaction using timestamp + random.
+       */
+      function generateID() {
+        return (
+          Date.now().toString(36) + Math.random().toString(36).substring(2, 9)
+        );
+      }
+
+      /**
+       * Add a new transaction to the list.
+       * @param {string} text - Description of the transaction
+       * @param {number} amount - Amount of the transaction (always positive)
+       * @param {string} type - 'income' or 'expense'
+       */
+      function addTransaction(text, amount, type) {
+        const transaction = {
+          id: generateID(),
+          text: text.trim(),
+          amount: type === "expense" ? -Math.abs(amount) : Math.abs(amount),
+          type: type,
+          date: new Date().toISOString(),
+        };
+        transactions.push(transaction);
+        saveTransactions();
+        updateUI();
+        showToast(
+          type === "income" ? "Income added!" : "Expense added!",
+          type === "income" ? "success" : "error",
+        );
+      }
+
+      /**
+       * Delete a transaction by its ID.
+       * @param {string} id - The unique ID of the transaction to remove
+       */
+      function deleteTransaction(id) {
+        const item = document.querySelector(`[data-id="${id}"]`);
+        if (item) {
+          item.classList.add("removing");
+          setTimeout(() => {
+            transactions = transactions.filter((t) => t.id !== id);
+            saveTransactions();
+            updateUI();
+            showToast("Transaction removed", "info");
+          }, 300);
+        } else {
+          transactions = transactions.filter((t) => t.id !== id);
+          saveTransactions();
+          updateUI();
+        }
+      }
+
+      // =============================================
+      // CALCULATIONS
+      // =============================================
+
+      /**
+       * Calculate totals from the transactions array.
+       * @returns {{ balance: number, income: number, expense: number }}
+       */
+      function calculateTotals() {
+        const amounts = transactions.map((t) => t.amount);
+        const income = amounts
+          .filter((a) => a > 0)
+          .reduce((sum, a) => sum + a, 0);
+        const expense = amounts
+          .filter((a) => a < 0)
+          .reduce((sum, a) => sum + Math.abs(a), 0);
+        const balance = income - expense;
+        return { balance, income, expense };
+      }
+
+      // =============================================
+      // UI RENDERING
+      // =============================================
+
+      /**
+       * Format a number as US currency string.
+       * @param {number} num
+       * @returns {string}
+       */
+      function formatCurrency(num) {
+        return new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(num);
+      }
+
+      /**
+       * Format an ISO date string to a human-readable relative or absolute time.
+       * @param {string} isoString
+       * @returns {string}
+       */
+      function formatDate(isoString) {
+        const date = new Date(isoString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return "Just now";
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        return date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        });
+      }
+
+      /**
+       * Update all UI elements: summary, list, chart.
+       */
+      function updateUI() {
+        const { balance, income, expense } = calculateTotals();
+
+        // Update summary displays with pulse animation
+        updateDisplayWithPulse(balanceDisplay, formatCurrency(balance));
+        updateDisplayWithPulse(incomeDisplay, formatCurrency(income));
+        updateDisplayWithPulse(expenseDisplay, formatCurrency(expense));
+
+        // Update balance color based on positive/negative
+        if (balance > 0) {
+          balanceDisplay.className =
+            "text-4xl sm:text-5xl font-extrabold text-emerald-700 tracking-tight";
+        } else if (balance < 0) {
+          balanceDisplay.className =
+            "text-4xl sm:text-5xl font-extrabold text-red-700 tracking-tight";
+        } else {
+          balanceDisplay.className =
+            "text-4xl sm:text-5xl font-extrabold text-gray-900 tracking-tight";
+        }
+
+        // Render transaction list
+        renderTransactions();
+
+        // Update chart
+        updateChart(income, expense);
+
+        // Show/hide chart section
+        if (transactions.length > 0) {
+          chartSection.classList.remove("hidden");
+        } else {
+          chartSection.classList.add("hidden");
+        }
+      }
+
+      /**
+       * Update a display element with a pulse animation.
+       */
+      function updateDisplayWithPulse(element, value) {
+        element.textContent = value;
+        element.classList.add("balance-pulse");
+        setTimeout(() => element.classList.remove("balance-pulse"), 400);
+      }
+
+      /**
+       * Render the transaction list based on the current filter.
+       */
+      function renderTransactions() {
+        const filtered = getFilteredTransactions();
+
+        // Update transaction count
+        const count = filtered.length;
+        const totalCount = transactions.length;
+        if (currentFilter === "all") {
+          transactionCount.textContent = `${totalCount} transaction${totalCount !== 1 ? "s" : ""}`;
+        } else {
+          transactionCount.textContent = `${count} of ${totalCount} transaction${totalCount !== 1 ? "s" : ""}`;
+        }
+
+        // Show/hide empty state
+        if (transactions.length === 0) {
+          emptyState.classList.remove("hidden");
+          transactionList.innerHTML = "";
+          return;
+        }
+        emptyState.classList.add("hidden");
+
+        if (filtered.length === 0) {
+          transactionList.innerHTML = `
+          <li class="text-center py-6 text-gray-400 text-sm font-medium">
+            No ${currentFilter} transactions found
+          </li>
+        `;
+          return;
+        }
+
+        transactionList.innerHTML = filtered
+          .map((t) => {
+            const isIncome = t.amount > 0;
+            const amountStr = isIncome
+              ? `+${formatCurrency(t.amount)}`
+              : `-${formatCurrency(Math.abs(t.amount))}`;
+            const amountColor = isIncome ? "text-emerald-600" : "text-red-600";
+            const bgAccent = isIncome
+              ? "bg-emerald-50 border-l-emerald-400"
+              : "bg-red-50 border-l-red-400";
+            const icon = isIncome ? "fa-arrow-up" : "fa-arrow-down";
+            const iconBg = isIncome
+              ? "bg-emerald-100 text-emerald-600"
+              : "bg-red-100 text-red-600";
+
+            return `
+          <li class="transaction-item fade-in-up" data-id="${t.id}">
+            <div class="flex items-center gap-3 p-3 rounded-xl border-l-4 ${bgAccent} border border-white/50 shadow-sm hover:shadow-md transition-shadow">
+              <div class="w-9 h-9 rounded-lg ${iconBg} flex items-center justify-center flex-shrink-0">
+                <i class="fa-solid ${icon} text-xs"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-gray-800 truncate">${escapeHTML(t.text)}</p>
+                <p class="text-xs text-gray-400 font-medium">${formatDate(t.date)}</p>
+              </div>
+              <span class="text-sm font-bold ${amountColor} flex-shrink-0 whitespace-nowrap">${amountStr}</span>
+              <button
+                class="delete-btn w-7 h-7 rounded-lg bg-gray-100 hover:bg-red-100 text-gray-400 hover:text-red-500 flex items-center justify-center flex-shrink-0 transition-colors"
+                onclick="deleteTransaction('${t.id}')"
+                aria-label="Delete transaction: ${escapeHTML(t.text)}"
+                title="Delete"
+              >
+                <i class="fa-solid fa-xmark text-xs"></i>
+              </button>
+            </div>
+          </li>
+        `;
+          })
+          .join("");
+      }
+
+      /**
+       * Get filtered transactions based on current filter setting.
+       * Returns transactions in reverse chronological order.
+       */
+      function getFilteredTransactions() {
+        const sorted = [...transactions].sort(
+          (a, b) => new Date(b.date) - new Date(a.date),
+        );
+        if (currentFilter === "income")
+          return sorted.filter((t) => t.amount > 0);
+        if (currentFilter === "expense")
+          return sorted.filter((t) => t.amount < 0);
+        return sorted;
+      }
+
+      /**
+       * Escape HTML to prevent XSS.
+       */
+      function escapeHTML(str) {
+        const div = document.createElement("div");
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      // =============================================
+      // CHART
+      // =============================================
+
+      /**
+       * Initialize or update the Chart.js doughnut chart.
+       */
+      function updateChart(income, expense) {
+        const ctx = document.getElementById("financeChart");
+
+        if (income === 0 && expense === 0) {
+          if (financeChart) {
+            financeChart.destroy();
+            financeChart = null;
+          }
+          chartEmpty.classList.remove("hidden");
+          return;
+        }
+
+        chartEmpty.classList.add("hidden");
+
+        const data = {
+          labels: ["Income", "Expenses"],
+          datasets: [
+            {
+              data: [income, expense],
+              backgroundColor: [
+                "rgba(5, 150, 105, 0.85)",
+                "rgba(220, 38, 38, 0.85)",
+              ],
+              borderColor: ["rgba(5, 150, 105, 1)", "rgba(220, 38, 38, 1)"],
+              borderWidth: 2,
+              hoverBorderWidth: 3,
+              hoverOffset: 8,
+            },
+          ],
+        };
+
+        const options = {
+          responsive: true,
+          maintainAspectRatio: true,
+          cutout: "60%",
+          plugins: {
+            legend: {
+              position: "bottom",
+              labels: {
+                padding: 16,
+                usePointStyle: true,
+                pointStyleWidth: 12,
+                font: {
+                  family: "Inter",
+                  size: 12,
+                  weight: "600",
+                },
+              },
+            },
+            tooltip: {
+              backgroundColor: "rgba(17, 24, 39, 0.9)",
+              titleFont: { family: "Inter", size: 13, weight: "700" },
+              bodyFont: { family: "Inter", size: 12, weight: "500" },
+              padding: 12,
+              cornerRadius: 10,
+              callbacks: {
+                label: function (context) {
+                  const value = context.parsed;
+                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                  const percentage =
+                    total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                  return ` ${context.label}: ${formatCurrency(value)} (${percentage}%)`;
+                },
+              },
+            },
+          },
+          animation: {
+            animateScale: true,
+            animateRotate: true,
+            duration: 600,
+            easing: "easeOutQuart",
+          },
+        };
+
+        if (financeChart) {
+          financeChart.data = data;
+          financeChart.options = options;
+          financeChart.update("active");
+        } else {
+          financeChart = new Chart(ctx, {
+            type: "doughnut",
+            data: data,
+            options: options,
+          });
+        }
+      }
+
+      // =============================================
+      // TOAST NOTIFICATIONS
+      // =============================================
+
+      /**
+       * Show a toast notification.
+       * @param {string} message - Toast message text
+       * @param {'success'|'error'|'info'} type - Toast type
+       */
+      function showToast(message, type = "info") {
+        const container = document.getElementById("toastContainer");
+        const toast = document.createElement("div");
+
+        const colors = {
+          success: "bg-emerald-600",
+          error: "bg-red-600",
+          info: "bg-brand-600",
+        };
+        const icons = {
+          success: "fa-circle-check",
+          error: "fa-circle-xmark",
+          info: "fa-circle-info",
+        };
+
+        toast.className = `toast-enter ${colors[type]} text-white px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 text-sm font-semibold min-w-[200px]`;
+        toast.innerHTML = `<i class="fa-solid ${icons[type]}"></i><span>${message}</span>`;
+
+        container.appendChild(toast);
+
+        setTimeout(() => {
+          toast.classList.remove("toast-enter");
+          toast.classList.add("toast-exit");
+          setTimeout(() => toast.remove(), 300);
+        }, 2200);
+      }
+
+      // =============================================
+      // FORM VALIDATION & SUBMISSION
+      // =============================================
+
+      /**
+       * Validate the form inputs.
+       * @returns {boolean} True if valid
+       */
+      function validateForm() {
+        let isValid = true;
+
+        // Validate description
+        const text = textInput.value.trim();
+        if (!text) {
+          textError.classList.remove("hidden");
+          textInput.classList.add("border-red-400");
+          isValid = false;
+        } else {
+          textError.classList.add("hidden");
+          textInput.classList.remove("border-red-400");
+        }
+
+        // Validate amount
+        const amount = parseFloat(amountInput.value);
+        if (!amountInput.value || isNaN(amount) || amount <= 0) {
+          amountError.classList.remove("hidden");
+          amountInput.classList.add("border-red-400");
+          isValid = false;
+        } else {
+          amountError.classList.add("hidden");
+          amountInput.classList.remove("border-red-400");
+        }
+
+        return isValid;
+      }
+
+      // Form submit handler
+      transactionForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+
+        if (!validateForm()) return;
+
+        const text = textInput.value.trim();
+        const amount = parseFloat(amountInput.value);
+        const type = document.querySelector(
+          'input[name="transactionType"]:checked',
+        ).value;
+
+        addTransaction(text, amount, type);
+
+        // Reset form
+        textInput.value = "";
+        amountInput.value = "";
+        document.getElementById("typeIncome").checked = true;
+
+        // Focus back on text input for quick entry
+        textInput.focus();
+      });
+
+      // Clear validation errors on input
+      textInput.addEventListener("input", () => {
+        if (textInput.value.trim()) {
+          textError.classList.add("hidden");
+          textInput.classList.remove("border-red-400");
+        }
+      });
+      amountInput.addEventListener("input", () => {
+        const val = parseFloat(amountInput.value);
+        if (!isNaN(val) && val > 0) {
+          amountError.classList.add("hidden");
+          amountInput.classList.remove("border-red-400");
+        }
+      });
+
+      // =============================================
+      // FILTER BUTTONS
+      // =============================================
+
+      filterBtns.forEach((btn) => {
+        btn.addEventListener("click", function () {
+          // Update active state
+          filterBtns.forEach((b) => {
+            b.classList.remove("active");
+            b.classList.add("text-gray-600", "bg-white");
+          });
+          this.classList.add("active");
+          this.classList.remove("text-gray-600", "bg-white");
+
+          // Update filter and re-render
+          currentFilter = this.dataset.filter;
+          renderTransactions();
+        });
+      });
+
+      // =============================================
+      // KEYBOARD SHORTCUTS
+      // =============================================
+
+      document.addEventListener("keydown", function (e) {
+        // Ctrl/Cmd + Enter to submit form
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          transactionForm.dispatchEvent(new Event("submit"));
+        }
+      });
+
+      // =============================================
+      // INITIALIZATION
+      // =============================================
+
+      function init() {
+        // Show storage warning if localStorage is blocked
+        if (!storageAvailable) {
+          const warning = document.getElementById("storageWarning");
+          if (warning) warning.classList.remove("hidden");
+        }
+
+        // Load saved transactions
+        transactions = loadTransactions();
+
+        // Migrate old format: if any transaction lacks a 'type' field, infer it
+        transactions = transactions.map((t) => {
+          if (!t.type) {
+            t.type = t.amount >= 0 ? "income" : "expense";
+          }
+          if (!t.date) {
+            t.date = new Date().toISOString();
+          }
+          return t;
+        });
+        saveTransactions();
+
+        // Render initial state
+        updateUI();
+      }
+
+      // Start the app
+      init();
+    </script>
+  </body>
+</html>
